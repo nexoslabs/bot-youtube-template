@@ -1,0 +1,19 @@
+{
+  "name": "bot-youtube-template",
+  "version": "0.0.3",
+  "description": "A Node.js bot for YouTube Live that responds to chat commands, filters bad words, sends automated messages, and relays chat to Discord.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "auth": "node auth.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Nexos Labs",
+  "license": "ISC",
+  "dependencies": {
+    "google-auth-library": "^10.3.0",
+    "googleapis": "^159.0.0",
+    "js-yaml": "^4.1.0"
+  }
+}

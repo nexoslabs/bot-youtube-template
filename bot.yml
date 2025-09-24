@@ -1,0 +1,23 @@
+# blocked words for moderation
+badWords:
+  - badWords1
+  - badWords2
+
+# webhook url to send messages to discord
+discordWebhook: "https://discord.com/api/webhooks/webhooks_code"
+
+# auto message based on specific time (interval in milliseconds)
+timedMessages:
+  - interval: 30000
+    message: "Don’t forget to like & subscribe! 👍"
+  - interval: 60000
+    message: "Follow us on Twitter: https://twitter.com/@username"
+  - interval: 60000
+    message: "Join our Community: https://discord.com/invite/invite_code"
+
+# all commands to respond to user
+commands:
+  - hello: "Hello, @{user}! 👋"
+  - website: "Check out our website: https://example.com"
+  - discord: "Join our Discord: https://discord.gg/invite_code"
+  - uptime: "The stream has been running for {uptime} minutes!"
