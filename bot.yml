@@ -1,23 +1,51 @@
-# blocked words for moderation
+# List of blocked words for moderation
 badWords:
   - badWords1
   - badWords2
+# - badWords3
 
-# webhook url to send messages to discord
-discordWebhook: "https://discord.com/api/webhooks/webhooks_code"
+# Discord webhook URL for notifications
+discordWebhook:
+  enable: true
+  url: "https://discord.com/api/webhooks/webhooks_code"
 
-# auto message based on specific time (interval in milliseconds)
+# Automated timed messages (interval in milliseconds)
 timedMessages:
-  - interval: 30000
+  - interval: 50000
     message: "Don’t forget to like & subscribe! 👍"
-  - interval: 60000
-    message: "Follow us on Twitter: https://twitter.com/@username"
-  - interval: 60000
+  - interval: 100000
     message: "Join our Community: https://discord.com/invite/invite_code"
+  - interval: 150000
+    message: "Follow us on Twitter: https://twitter.com/twitter_handle"
+# - interval: 300000
+#   message: "Check out our website: https://example.com"
 
-# all commands to respond to user
+# Commands to respond to user
 commands:
-  - hello: "Hello, @{user}! 👋"
-  - website: "Check out our website: https://example.com"
-  - discord: "Join our Discord: https://discord.gg/invite_code"
-  - uptime: "The stream has been running for {uptime} minutes!"
+  - trigger: "!hello"
+    response: "Hello, @{user}! 👋 welcome to the stream! 🎉"
+    description: "Greets the user."
+    aliases: ["!hi", "!hey"]
+
+  - trigger: "!website"
+    response: "Check out our website: https://example.com"
+    description: "Shares the website link."
+    aliases: ["!web"]
+
+  - trigger: "!discord"
+    response: "Join our Discord: https://discord.gg/invite_code"
+    description: "Shares the Discord invite."
+    aliases: ["!dc"]
+
+  - trigger: "!uptime"
+    response: "The stream has been running for {uptime} minutes!"
+    description: "Shows how long the stream has been live."
+    aliases: []
+
+# - trigger: "!socials"
+#   response: "Follow us on Twitter: https://twitter.com/twitter_handle"
+#   description: "Share social media handels."
+#   aliases: ["!twitter", "!x"]
+
+
+# Other settings

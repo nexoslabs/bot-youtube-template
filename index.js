@@ -2,9 +2,25 @@
 const fs = require("fs");
 const yaml = require("js-yaml");
 const { google } = require("googleapis");
+const winston = require("winston");
+// ---- LOGGER SETUP ----
+const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ timestamp, level, message }) => {
+      return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+    })
+  ),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: "bot-error.log", level: "error" }),
+    new winston.transports.File({ filename: "bot-combined.log" }),
+  ],
+});
 // Dynamic import for node-fetch (ESM compatibility)
-const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
-
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: f }) => f(...args));
 
 // ---- CONFIGURATION & DATA LOADING ----
 
@@ -12,7 +28,19 @@ const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...ar
  * OAuth2 credentials for YouTube API (from Google Cloud Console)
  * @type {object}
  */
-const CLIENT_SECRET = require("./client_secret.json");
+let CLIENT_SECRET;
+try {
+  CLIENT_SECRET = require("./client_secret.json");
+  if (!CLIENT_SECRET || !CLIENT_SECRET.installed) {
+    logger.error(
+      "Missing or invalid client_secret.json file. Please download it from Google Cloud Console and place it in the project directory."
+    );
+    process.exit(1);
+  }
+} catch (err) {
+  logger.error(`Failed to load client_secret.json: ${err.message}`);
+  process.exit(1);
+}
 
 /**
  * File to persist list of users who have chatted in the stream
@@ -24,11 +52,17 @@ const PARTICIPANTS_FILE = "participants.json";
  * Load bot configuration and commands from YAML file
  * @type {object}
  */
-const botYml = yaml.load(fs.readFileSync("bot.yml", "utf8"));
+let botYml;
+try {
+  botYml = yaml.load(fs.readFileSync("bot.yml", "utf8"));
+} catch (err) {
+  logger.error(`Failed to load bot.yml: ${err.message}`);
+  process.exit(1);
+}
 
 /**
  * Main bot configuration object
- * @type {{badWords: string[], discordWebhook: string|null, timedMessages: Array<{interval: number, message: string}>}}
+ * @type {{badWords: string[], discordWebhook: object|null, timedMessages: Array<{interval: number, message: string}>}}
  */
 const config = {
   badWords: botYml.badWords || [],
@@ -42,34 +76,56 @@ const config = {
 };
 
 /**
- * Commands mapping (lowercase message -> response template)
- * @type {Object.<string, string>}
+ * Commands mapping (lowercase trigger/alias -> command object)
+ * @type {Object.<string, {response: string, description: string, aliases: string[]}>}
  */
 const commands = {};
 if (Array.isArray(botYml.commands)) {
   botYml.commands.forEach((cmd) => {
-    const key = Object.keys(cmd)[0];
-    commands[key] = cmd[key];
+    if (cmd.trigger && cmd.response) {
+      // Map main trigger
+      commands[cmd.trigger.toLowerCase()] = {
+        response: cmd.response,
+        description: cmd.description || "",
+        aliases: Array.isArray(cmd.aliases) ? cmd.aliases : [],
+      };
+      // Map aliases
+      if (Array.isArray(cmd.aliases)) {
+        cmd.aliases.forEach((alias) => {
+          commands[alias.toLowerCase()] = {
+            response: cmd.response,
+            description: cmd.description || "",
+            aliases: cmd.aliases,
+          };
+        });
+      }
+    }
   });
 }
-
 
 /**
  * Set of users who have chatted in the stream (for welcome messages)
  * @type {Set<string>}
  */
 let participants = new Set();
-if (fs.existsSync(PARTICIPANTS_FILE)) {
-  participants = new Set(JSON.parse(fs.readFileSync(PARTICIPANTS_FILE)));
+try {
+  if (fs.existsSync(PARTICIPANTS_FILE)) {
+    participants = new Set(JSON.parse(fs.readFileSync(PARTICIPANTS_FILE)));
+  }
+} catch (err) {
+  logger.warn(`Could not load participants file: ${err.message}`);
 }
 
 /**
  * Persist the current set of participants to disk
  */
 function saveParticipants() {
-  fs.writeFileSync(PARTICIPANTS_FILE, JSON.stringify([...participants]));
+  try {
+    fs.writeFileSync(PARTICIPANTS_FILE, JSON.stringify([...participants]));
+  } catch (err) {
+    logger.error(`Failed to save participants: ${err.message}`);
+  }
 }
-
 
 /**
  * Required OAuth2 scopes for YouTube API
@@ -82,7 +138,6 @@ const SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"];
  * @type {string}
  */
 const TOKEN_PATH = "token.json";
-
 
 // ---------- AUTH ----------
 
@@ -110,7 +165,7 @@ async function authorize() {
     access_type: "offline",
     scope: SCOPES,
   });
-  console.log("Authorize this app by visiting:", authUrl);
+  logger.info(`Authorize this app by visiting: ${authUrl}`);
 
   // After visiting, paste the code here
   const readline = require("readline").createInterface({
@@ -125,10 +180,11 @@ async function authorize() {
       oAuth2Client.setCredentials(tokens);
       fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
       resolve(oAuth2Client);
+      logger.info("OAuth2 token saved successfully.");
     });
   });
+  logger.error(`Failed to get OAuth2 token: ${err.message}`);
 }
-
 
 // ---------- CHAT FUNCTIONS ----------
 
@@ -146,7 +202,9 @@ async function getLiveChatId(auth) {
   });
 
   if (!res.data.items.length) {
-    console.error("[ERROR] No active live stream found! Please start a YouTube live broadcast and try again.");
+    logger.error(
+      "No active live stream found! Please start a YouTube live broadcast and try again."
+    );
     process.exit(1);
   }
 
@@ -154,12 +212,14 @@ async function getLiveChatId(auth) {
     (b) => b.status?.lifeCycleStatus === "live"
   );
   if (!active) {
-    console.error("[ERROR] No currently active broadcast! Please make sure your stream is live.");
+    logger.error(
+      "No currently active broadcast! Please make sure your stream is live."
+    );
     process.exit(1);
   }
 
   const liveChatId = active.snippet.liveChatId;
-  console.log("[INFO] Live Chat ID:", liveChatId);
+  logger.info(`Live Chat ID: ${liveChatId}`);
   return liveChatId;
 }
 
@@ -183,7 +243,6 @@ async function sendMessage(youtube, liveChatId, text) {
   });
 }
 
-
 // ---------- DISCORD WEBHOOK ----------
 
 /**
@@ -194,19 +253,23 @@ async function sendMessage(youtube, liveChatId, text) {
  * @returns {Promise<void>}
  */
 async function sendToDiscord(user, avatar, message) {
-  if (!config.discordWebhook) return;
+  if (
+    !config.discordWebhook ||
+    !config.discordWebhook.enable ||
+    !config.discordWebhook.url
+  )
+    return;
 
-  await fetch(config.discordWebhook, {
+  await fetch(config.discordWebhook.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ 
+    body: JSON.stringify({
       username: user,
       avatar_url: avatar,
-      content: message
-     }),
+      content: message,
+    }),
   });
 }
-
 
 // ---------- HELPERS ----------
 
@@ -222,7 +285,6 @@ function formatUptime(startTime) {
   const hours = Math.floor(diff / 3600000);
   return `${hours}h ${mins}m ${secs}s`;
 }
-
 
 // ---------- BOT LOOP ----------
 
@@ -260,7 +322,7 @@ async function listenAndRespond(auth, liveChatId) {
           const user = item.authorDetails.displayName;
           const avatar = item.authorDetails.profileImageUrl;
           const message = item.snippet.displayMessage;
-          console.log(`${user}: ${message}`);
+          logger.info(`${user}: ${message}`);
 
           // Send every message to Discord
           await sendToDiscord(user, avatar, message);
@@ -283,15 +345,27 @@ async function listenAndRespond(auth, liveChatId) {
               liveChatId,
               `@${user}, please avoid bad language!`
             );
-            await sendToDiscord("Bot", null, `@${user} used a banned word: "${message}"`);
+            await sendToDiscord(
+              "Bot",
+              null,
+              `@${user} used a banned word: "${message}"`
+            );
             continue;
           }
 
-          // Command handler: respond to recognized commands
-          if (commands[message.toLowerCase()]) {
-            let reply = commands[message.toLowerCase()]
+          // Command handler: respond to recognized commands or aliases
+          const cmdObj = commands[message.toLowerCase()];
+          if (cmdObj) {
+            let reply = cmdObj.response
               .replace("{user}", user)
               .replace("{uptime}", formatUptime(startTime));
+            // If command expects arguments, replace {args}
+            if (reply.includes("{args}")) {
+              // Extract args (everything after the command)
+              const parts = message.split(" ");
+              const args = parts.slice(1).join(" ");
+              reply = reply.replace("{args}", args);
+            }
             await sendMessage(youtube, liveChatId, reply);
           }
         }
@@ -303,7 +377,7 @@ async function listenAndRespond(auth, liveChatId) {
       const interval = res.data.pollingIntervalMillis || 5000;
       setTimeout(pollChat, interval);
     } catch (err) {
-      console.error("Polling error:", err.message);
+      logger.error("Polling error:", err.message);
       // If quota exceeded, wait longer before retry
       const backoff = err.message.includes("quota") ? 60000 : 10000;
       setTimeout(pollChat, backoff);
@@ -313,7 +387,6 @@ async function listenAndRespond(auth, liveChatId) {
   pollChat();
 }
 
-
 // ---------- MAIN ----------
 
 /**
@@ -321,11 +394,32 @@ async function listenAndRespond(auth, liveChatId) {
  */
 (async () => {
   try {
+    // --- Config Validation ---
+    function validateConfig(botYml) {
+      if (!botYml) {
+        logger.error("bot.yml is missing or empty.");
+        process.exit(1);
+      }
+      if (!Array.isArray(botYml.commands)) {
+        logger.error("bot.yml: 'commands' section is missing or not an array.");
+        process.exit(1);
+      }
+      if (botYml.timedMessages && !Array.isArray(botYml.timedMessages)) {
+        logger.error("bot.yml: 'timedMessages' must be an array if present.");
+        process.exit(1);
+      }
+      if (botYml.badWords && !Array.isArray(botYml.badWords)) {
+        logger.error("bot.yml: 'badWords' must be an array if present.");
+        process.exit(1);
+      }
+    }
+    validateConfig(botYml);
+
     const auth = await authorize();
     const liveChatId = await getLiveChatId(auth);
     listenAndRespond(auth, liveChatId);
   } catch (err) {
-    console.error("[FATAL] Unhandled error:", err.message);
+    logger.error(`[FATAL] Unhandled error: ${err.message}`);
     process.exit(1);
   }
 })();
