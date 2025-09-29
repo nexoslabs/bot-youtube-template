@@ -10,14 +10,16 @@ discordWebhook:
   url: "https://discord.com/api/webhooks/webhooks_code"
 
 # Automated timed messages (interval in milliseconds)
+# * Since 1 second = 1000 milliseconds, and 1 minute = 60 seconds:
+# * 10 minutes=10×60 seconds=600 seconds 600 seconds=600×1000 milliseconds=600,000 ms
 timedMessages:
-  - interval: 50000
+  - interval: 300000
     message: "Don’t forget to like & subscribe! 👍"
-  - interval: 100000
+  - interval: 600000
     message: "Join our Community: https://discord.com/invite/invite_code"
-  - interval: 150000
+  - interval: 900000
     message: "Follow us on Twitter: https://twitter.com/twitter_handle"
-# - interval: 300000
+# - interval: 900000
 #   message: "Check out our website: https://example.com"
 
 # Commands to respond to user

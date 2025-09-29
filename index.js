@@ -19,8 +19,7 @@ const logger = winston.createLogger({
   ],
 });
 // Dynamic import for node-fetch (ESM compatibility)
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: f }) => f(...args));
+const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 
 // ---- CONFIGURATION & DATA LOADING ----
 
@@ -55,6 +54,26 @@ const PARTICIPANTS_FILE = "participants.json";
 let botYml;
 try {
   botYml = yaml.load(fs.readFileSync("bot.yml", "utf8"));
+  if (!botYml) {
+    logger.warning("bot.yml is missing or empty.");
+    process.exit(1);
+  }
+  if (!Array.isArray(botYml.commands)) {
+    logger.error("bot.yml: 'commands' section is missing or not an array.");
+    process.exit(1);
+  }
+  if (botYml.timedMessages && !Array.isArray(botYml.timedMessages)) {
+    logger.error("bot.yml: 'timedMessages' must be an array if present.");
+    process.exit(1);
+  }
+  if (botYml.badWords && !Array.isArray(botYml.badWords)) {
+    logger.error("bot.yml: 'badWords' must be an array if present.");
+    process.exit(1);
+  }
+  if (!botYml.discordWebhook) {
+    logger.error("bot.yml: 'discordWebhook' section is missing.");
+    process.exit(1);
+  }
 } catch (err) {
   logger.error(`Failed to load bot.yml: ${err.message}`);
   process.exit(1);
@@ -394,27 +413,6 @@ async function listenAndRespond(auth, liveChatId) {
  */
 (async () => {
   try {
-    // --- Config Validation ---
-    function validateConfig(botYml) {
-      if (!botYml) {
-        logger.error("bot.yml is missing or empty.");
-        process.exit(1);
-      }
-      if (!Array.isArray(botYml.commands)) {
-        logger.error("bot.yml: 'commands' section is missing or not an array.");
-        process.exit(1);
-      }
-      if (botYml.timedMessages && !Array.isArray(botYml.timedMessages)) {
-        logger.error("bot.yml: 'timedMessages' must be an array if present.");
-        process.exit(1);
-      }
-      if (botYml.badWords && !Array.isArray(botYml.badWords)) {
-        logger.error("bot.yml: 'badWords' must be an array if present.");
-        process.exit(1);
-      }
-    }
-    validateConfig(botYml);
-
     const auth = await authorize();
     const liveChatId = await getLiveChatId(auth);
     listenAndRespond(auth, liveChatId);
